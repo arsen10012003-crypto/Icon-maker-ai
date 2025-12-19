@@ -1,262 +1,193 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Wand2, 
-  Download, 
-  Trash2, 
-  Image as ImageIcon, 
-  Square, 
-  Loader2, 
-  Layers,
-  RefreshCw,
-  AlertCircle
-} from 'lucide-react';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asset Forge Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #09090b; color: white; }
+        .glass { background: rgba(24, 24, 27, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
+        .loader { border-top-color: #0ea5e9; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
 
-const apiKey = ""; // API key is handled by the environment
-
-const App = () => {
-  const [prompt, setPrompt] = useState('');
-  const [style, setStyle] = useState('Flat Vector');
-  const [assetType, setAssetType] = useState('icon');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [assets, setAssets] = useState([]);
-  const [error, setError] = useState(null);
-  const [regeneratingId, setRegeneratingId] = useState(null);
-
-  // Helper for API calls with retry logic
-  const fetchWithRetry = async (url, options, retries = 5, backoff = 1000) => {
-    try {
-      const response = await fetch(url, options);
-      if (!response.ok) {
-        if (retries > 0 && response.status >= 500) {
-          await new Promise(resolve => setTimeout(resolve, backoff));
-          return fetchWithRetry(url, options, retries - 1, backoff * 2);
-        }
-        throw new Error(`Error: ${response.status}`);
-      }
-      return await response.json();
-    } catch (err) {
-      if (retries > 0) {
-        await new Promise(resolve => setTimeout(resolve, backoff));
-        return fetchWithRetry(url, options, retries - 1, backoff * 2);
-      }
-      throw err;
-    }
-  };
-
-  const handleGenerate = async (reGenTarget = null) => {
-    const targetPrompt = reGenTarget ? reGenTarget.originalPrompt : prompt;
-    const targetStyle = reGenTarget ? reGenTarget.style : style;
-    const targetType = reGenTarget ? reGenTarget.type : assetType;
-
-    if (!targetPrompt) return;
-    
-    if (reGenTarget) setRegeneratingId(reGenTarget.id);
-    else setIsGenerating(true);
-    
-    setError(null);
-
-    try {
-      // 1. Optimize prompt with Gemini
-      const optimizeResponse = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `Create a professional game ${targetType} of ${targetPrompt}. Style: ${targetStyle}. Single object, isolated on white background #FFFFFF.` }] }]
-        })
-      });
-
-      const optimizedPrompt = optimizeResponse.candidates?.[0]?.content?.parts?.[0]?.text || targetPrompt;
-
-      // 2. Generate Image with Imagen
-      const imageResult = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instances: { prompt: optimizedPrompt },
-          parameters: { sampleCount: 1 }
-        })
-      });
-
-      if (imageResult.predictions?.[0]?.bytesBase64Encoded) {
-        const imageUrl = `data:image/png;base64,${imageResult.predictions[0].bytesBase64Encoded}`;
-        const newAsset = {
-          id: Date.now(),
-          url: imageUrl,
-          name: targetPrompt.split(' ').slice(0, 2).join('_').toLowerCase() || 'asset',
-          type: targetType,
-          style: targetStyle,
-          originalPrompt: targetPrompt
-        };
-
-        if (reGenTarget) {
-          setAssets(prev => prev.map(a => a.id === reGenTarget.id ? newAsset : a));
-        } else {
-          setAssets(prev => [newAsset, ...prev]);
-          setPrompt('');
-        }
-      } else {
-        throw new Error("Failed to generate image bytes");
-      }
-    } catch (err) {
-      setError("Generation failed. Please check your connection.");
-      console.error(err);
-    } finally {
-      setIsGenerating(false);
-      setRegeneratingId(null);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-[#09090b] text-white p-6 font-sans">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <header className="flex flex-col md:flex-row justify-between items-center gap-6 mb-12 border-b border-white/5 pb-8">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-sky-500 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-500/20">
-              <Layers className="w-7 h-7" />
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-center gap-6 mb-12 pb-8 border-b border-white/5">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-sky-500 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-500/20">
+                    <i class="fas fa-layer-group text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-black tracking-tighter uppercase">Asset Forge</h1>
+                    <p class="text-[10px] text-sky-400 font-bold tracking-widest uppercase">Stable Edition</p>
+                </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-black tracking-tighter uppercase">Asset Forge</h1>
-              <p className="text-[10px] text-sky-400 font-bold tracking-widest uppercase">Pro Edition</p>
-            </div>
-          </div>
 
-          <div className="flex bg-zinc-900 rounded-xl p-1 border border-white/5">
-            <button 
-              onClick={() => setAssetType('icon')}
-              className={`px-6 py-2 rounded-lg text-xs font-bold transition-all ${assetType === 'icon' ? 'bg-sky-500 text-white' : 'text-zinc-500'}`}
-            >
-              ICONS
-            </button>
-            <button 
-              onClick={() => setAssetType('button')}
-              className={`px-6 py-2 rounded-lg text-xs font-bold transition-all ${assetType === 'button' ? 'bg-sky-500 text-white' : 'text-zinc-500'}`}
-            >
-              UI ELEMENTS
-            </button>
-          </div>
+            <div class="flex bg-zinc-900 rounded-xl p-1 border border-white/5" id="typeToggle">
+                <button onclick="setType('icon')" id="btn-icon" class="px-6 py-2 rounded-lg text-xs font-bold transition-all bg-sky-500 text-white">ICONS</button>
+                <button onclick="setType('ui')" id="btn-ui" class="px-6 py-2 rounded-lg text-xs font-bold transition-all text-zinc-500">UI ELEMENTS</button>
+            </div>
         </header>
 
-        <div className="grid lg:grid-cols-12 gap-10">
-          {/* Controls */}
-          <div className="lg:col-span-4 space-y-6">
-            <div className="bg-zinc-900 border border-white/5 rounded-3xl p-6 shadow-2xl">
-              <div className="space-y-5">
-                <div>
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-2">Prompt</label>
-                  <textarea 
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="e.g. Magic healing potion bottle..."
-                    className="w-full h-28 bg-black border border-white/10 rounded-xl p-4 text-sm focus:border-sky-500 outline-none transition-all resize-none"
-                  />
-                </div>
+        <div class="grid lg:grid-cols-12 gap-10">
+            <!-- Sidebar -->
+            <div class="lg:col-span-4 space-y-6">
+                <div class="glass rounded-3xl p-6 shadow-2xl">
+                    <div class="space-y-5">
+                        <div>
+                            <label class="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-2">Prompt</label>
+                            <textarea id="promptInput" placeholder="e.g. Health potion, glowing liquid..." 
+                                class="w-full h-32 bg-black border border-white/10 rounded-xl p-4 text-sm focus:border-sky-500 outline-none transition-all resize-none"></textarea>
+                        </div>
 
-                <div>
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-2">Style</label>
-                  <select 
-                    value={style}
-                    onChange={(e) => setStyle(e.target.value)}
-                    className="w-full bg-black border border-white/10 rounded-xl p-3 text-sm focus:border-sky-500 outline-none appearance-none"
-                  >
-                    <option>Flat Vector</option>
-                    <option>Fantasy RPG</option>
-                    <option>Cyberpunk</option>
-                    <option>3D Render</option>
-                  </select>
-                </div>
+                        <div>
+                            <label class="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-2">Art Style</label>
+                            <select id="styleSelect" class="w-full bg-black border border-white/10 rounded-xl p-3 text-sm focus:border-sky-500 outline-none appearance-none cursor-pointer">
+                                <option value="Flat Vector">Flat Vector</option>
+                                <option value="Isometric 3D">Isometric 3D</option>
+                                <option value="Retro Pixel Art">Retro Pixel Art</option>
+                                <option value="Fantasy Hand-painted">Fantasy Hand-painted</option>
+                            </select>
+                        </div>
 
-                <button 
-                  onClick={() => handleGenerate()}
-                  disabled={isGenerating || !prompt}
-                  className="w-full py-4 bg-sky-500 hover:bg-sky-400 disabled:opacity-30 disabled:hover:bg-sky-500 text-white rounded-xl font-black text-xs tracking-widest transition-all flex items-center justify-center gap-3"
-                >
-                  {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-                  GENERATE ASSET
-                </button>
+                        <button id="genBtn" onclick="generateAsset()" 
+                            class="w-full py-4 bg-sky-500 hover:bg-sky-400 text-white rounded-xl font-black text-xs tracking-widest transition-all flex items-center justify-center gap-3">
+                            <i class="fas fa-wand-magic-sparkles"></i>
+                            GENERATE ASSET
+                        </button>
 
-                {error && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2 text-red-400 text-[10px] font-bold">
-                    <AlertCircle className="w-3 h-3" /> {error}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Results Grid */}
-          <div className="lg:col-span-8">
-            <div className="grid sm:grid-cols-2 gap-6">
-              {assets.length === 0 && !isGenerating && (
-                <div className="col-span-full h-80 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center text-zinc-700">
-                  <ImageIcon className="w-12 h-12 mb-4 opacity-10" />
-                  <p className="text-[10px] font-black uppercase tracking-widest">Awaiting creation</p>
-                </div>
-              )}
-
-              {isGenerating && (
-                <div className="aspect-square bg-zinc-900 border border-white/5 rounded-3xl flex flex-col items-center justify-center">
-                  <Loader2 className="w-8 h-8 text-sky-500 animate-spin mb-3" />
-                  <p className="text-[10px] font-black text-zinc-500 uppercase tracking-tighter">Forging new asset...</p>
-                </div>
-              )}
-
-              {assets.map((asset) => (
-                <div key={asset.id} className="group bg-zinc-900 border border-white/5 rounded-3xl overflow-hidden relative">
-                  <div className="aspect-square bg-white flex items-center justify-center p-6 relative">
-                    {regeneratingId === asset.id && (
-                      <div className="absolute inset-0 bg-white/80 z-10 flex items-center justify-center">
-                        <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
-                      </div>
-                    )}
-                    <img 
-                      src={asset.url} 
-                      alt={asset.name} 
-                      className="w-full h-full object-contain drop-shadow-xl" 
-                    />
-                    
-                    {/* Hover Overlay */}
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                      <button 
-                        onClick={() => handleGenerate(asset)}
-                        className="p-3 bg-sky-500 rounded-full hover:scale-110 transition-transform"
-                      >
-                        <RefreshCw className="w-5 h-5" />
-                      </button>
-                      <button 
-                        onClick={() => {
-                          const link = document.createElement('a');
-                          link.href = asset.url;
-                          link.download = `${asset.name}.png`;
-                          link.click();
-                        }}
-                        className="p-3 bg-white text-black rounded-full hover:scale-110 transition-transform"
-                      >
-                        <Download className="w-5 h-5" />
-                      </button>
-                      <button 
-                        onClick={() => setAssets(assets.filter(a => a.id !== asset.id))}
-                        className="p-3 bg-red-500 rounded-full hover:scale-110 transition-transform"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
+                        <div id="errorMessage" class="hidden p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2 text-red-400 text-[10px] font-bold">
+                            <i class="fas fa-circle-exclamation"></i>
+                            <span id="errorText">Error message here</span>
+                        </div>
                     </div>
-                  </div>
-                  <div className="p-4 flex items-center justify-between">
-                    <div>
-                      <h3 className="text-[10px] font-black uppercase text-white tracking-widest truncate max-w-[120px]">{asset.name}</h3>
-                      <p className="text-[8px] text-zinc-500 font-bold uppercase">{asset.style}</p>
-                    </div>
-                    <span className="text-[8px] font-black px-2 py-1 bg-zinc-800 rounded">PNG</span>
-                  </div>
                 </div>
-              ))}
             </div>
-          </div>
+
+            <!-- Content Area -->
+            <div class="lg:col-span-8">
+                <div id="assetsGrid" class="grid sm:grid-cols-2 gap-6">
+                    <!-- Placeholder -->
+                    <div id="placeholder" class="col-span-full h-80 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center text-zinc-700">
+                        <i class="far fa-image text-5xl mb-4 opacity-10"></i>
+                        <p class="text-[10px] font-black uppercase tracking-widest">Awaiting Creation</p>
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
     </div>
-  );
-};
 
-export default App;
+    <script>
+        const apiKey = "";
+        let currentType = 'icon';
+        const assets = [];
+
+        function setType(type) {
+            currentType = type;
+            document.getElementById('btn-icon').className = type === 'icon' ? 'px-6 py-2 rounded-lg text-xs font-bold bg-sky-500 text-white' : 'px-6 py-2 rounded-lg text-xs font-bold text-zinc-500';
+            document.getElementById('btn-ui').className = type === 'ui' ? 'px-6 py-2 rounded-lg text-xs font-bold bg-sky-500 text-white' : 'px-6 py-2 rounded-lg text-xs font-bold text-zinc-500';
+        }
+
+        async function fetchWithRetry(url, options, retries = 5, backoff = 1000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.ok) return await response.json();
+                    if (response.status < 500) break;
+                } catch (e) {}
+                await new Promise(r => setTimeout(r, backoff * Math.pow(2, i)));
+            }
+            throw new Error("API call failed");
+        }
+
+        async function generateAsset() {
+            const prompt = document.getElementById('promptInput').value;
+            const style = document.getElementById('styleSelect').value;
+            const genBtn = document.getElementById('genBtn');
+            const errorMsg = document.getElementById('errorMessage');
+
+            if (!prompt) return;
+
+            // UI State: Loading
+            genBtn.disabled = true;
+            genBtn.innerHTML = '<div class="loader w-4 h-4 border-2 rounded-full"></div> GENERATING...';
+            errorMsg.classList.add('hidden');
+            document.getElementById('placeholder').classList.add('hidden');
+
+            try {
+                // 1. Image Generation
+                const fullPrompt = `Game ${currentType} of ${prompt}, style: ${style}, single object isolated on white background #FFFFFF, high quality, professional asset.`;
+                
+                const response = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        instances: { prompt: fullPrompt },
+                        parameters: { sampleCount: 1 }
+                    })
+                });
+
+                if (response.predictions && response.predictions[0]) {
+                    const imgData = `data:image/png;base64,${response.predictions[0].bytesBase64Encoded}`;
+                    renderAsset(imgData, prompt, style);
+                    document.getElementById('promptInput').value = '';
+                }
+
+            } catch (err) {
+                errorMsg.classList.remove('hidden');
+                document.getElementById('errorText').innerText = "Failed to forge asset. Check connection.";
+            } finally {
+                genBtn.disabled = false;
+                genBtn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> GENERATE ASSET';
+            }
+        }
+
+        function renderAsset(url, name, style) {
+            const grid = document.getElementById('assetsGrid');
+            const card = document.createElement('div');
+            card.className = "group glass rounded-3xl overflow-hidden relative transition-all hover:scale-[1.02]";
+            
+            card.innerHTML = `
+                <div class="aspect-square bg-white flex items-center justify-center p-8 relative">
+                    <img src="${url}" class="w-full h-full object-contain drop-shadow-2xl">
+                    <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                        <button onclick="downloadImg('${url}', '${name}')" class="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:bg-sky-400 hover:text-white transition-colors">
+                            <i class="fas fa-download"></i>
+                        </button>
+                        <button onclick="this.closest('.group').remove(); checkEmpty();" class="w-12 h-12 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="p-5 flex justify-between items-center bg-zinc-900/50">
+                    <div>
+                        <h4 class="text-[10px] font-black uppercase tracking-widest truncate w-32">${name}</h4>
+                        <p class="text-[8px] font-bold text-zinc-500 uppercase">${style}</p>
+                    </div>
+                    <span class="text-[9px] font-black bg-white/5 px-2 py-1 rounded">PNG</span>
+                </div>
+            `;
+            grid.prepend(card);
+        }
+
+        function downloadImg(url, name) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `forge_${name.replace(/\s+/g, '_')}.png`;
+            a.click();
+        }
+
+        function checkEmpty() {
+            if (document.querySelectorAll('.group').length === 0) {
+                document.getElementById('placeholder').classList.remove('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
