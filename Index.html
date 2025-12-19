@@ -6,12 +6,12 @@ import {
   Image as ImageIcon, 
   Square, 
   Loader2, 
-  Sparkles,
   Layers,
-  RefreshCw
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 
-const apiKey = ""; // Provided by the environment
+const apiKey = ""; // API key is handled by the environment
 
 const App = () => {
   const [prompt, setPrompt] = useState('');
@@ -22,6 +22,7 @@ const App = () => {
   const [error, setError] = useState(null);
   const [regeneratingId, setRegeneratingId] = useState(null);
 
+  // Helper for API calls with retry logic
   const fetchWithRetry = async (url, options, retries = 5, backoff = 1000) => {
     try {
       const response = await fetch(url, options);
@@ -30,7 +31,7 @@ const App = () => {
           await new Promise(resolve => setTimeout(resolve, backoff));
           return fetchWithRetry(url, options, retries - 1, backoff * 2);
         }
-        throw new Error(`HTTP Error! Status: ${response.status}`);
+        throw new Error(`Error: ${response.status}`);
       }
       return await response.json();
     } catch (err) {
@@ -39,46 +40,6 @@ const App = () => {
         return fetchWithRetry(url, options, retries - 1, backoff * 2);
       }
       throw err;
-    }
-  };
-
-  const optimizePrompt = async (originalPrompt, type, selectedStyle) => {
-    const systemPrompt = `You are an expert game asset designer. 
-    Convert user requests into precise technical prompts for image generation.
-    STRICT RULES:
-    - Shape: High-quality 2D Flat vector style.
-    - Background: MUST be isolated on a pure #FFFFFF white background.
-    - Style: ${selectedStyle}.
-    Return ONLY the optimized prompt.`;
-
-    try {
-      const data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `Create a professional ${type} of ${originalPrompt}. Must be a single object, flat design, white background.` }] }],
-          systemInstruction: { parts: [{ text: systemPrompt }] }
-        })
-      });
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || originalPrompt;
-    } catch (err) {
-      return originalPrompt;
-    }
-  };
-
-  const generateAssetName = async (optimizedPrompt) => {
-    try {
-      const data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `Give me one short snake_case name for this asset: ${optimizedPrompt}` }] }],
-          systemInstruction: { parts: [{ text: "Output only the filename without extension." }] }
-        })
-      });
-      return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'asset';
-    } catch {
-      return 'asset_' + Date.now();
     }
   };
 
@@ -95,24 +56,33 @@ const App = () => {
     setError(null);
 
     try {
-      const optimized = await optimizePrompt(targetPrompt, targetType, targetStyle);
-      const assetName = await generateAssetName(optimized);
-
-      const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`, {
+      // 1. Optimize prompt with Gemini
+      const optimizeResponse = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          instances: { prompt: optimized },
+          contents: [{ parts: [{ text: `Create a professional game ${targetType} of ${targetPrompt}. Style: ${targetStyle}. Single object, isolated on white background #FFFFFF.` }] }]
+        })
+      });
+
+      const optimizedPrompt = optimizeResponse.candidates?.[0]?.content?.parts?.[0]?.text || targetPrompt;
+
+      // 2. Generate Image with Imagen
+      const imageResult = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instances: { prompt: optimizedPrompt },
           parameters: { sampleCount: 1 }
         })
       });
 
-      if (result.predictions?.[0]?.bytesBase64Encoded) {
-        const imageUrl = `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
+      if (imageResult.predictions?.[0]?.bytesBase64Encoded) {
+        const imageUrl = `data:image/png;base64,${imageResult.predictions[0].bytesBase64Encoded}`;
         const newAsset = {
           id: Date.now(),
           url: imageUrl,
-          name: assetName,
+          name: targetPrompt.split(' ').slice(0, 2).join('_').toLowerCase() || 'asset',
           type: targetType,
           style: targetStyle,
           originalPrompt: targetPrompt
@@ -124,9 +94,12 @@ const App = () => {
           setAssets(prev => [newAsset, ...prev]);
           setPrompt('');
         }
+      } else {
+        throw new Error("Failed to generate image bytes");
       }
     } catch (err) {
-      setError("Generation error. Please try again.");
+      setError("Generation failed. Please check your connection.");
+      console.error(err);
     } finally {
       setIsGenerating(false);
       setRegeneratingId(null);
@@ -134,116 +107,119 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-100 p-4 md:p-8 font-sans">
+    <div className="min-h-screen bg-[#09090b] text-white p-6 font-sans">
       <div className="max-w-6xl mx-auto">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
-          <div className="flex items-center gap-3">
+        {/* Header */}
+        <header className="flex flex-col md:flex-row justify-between items-center gap-6 mb-12 border-b border-white/5 pb-8">
+          <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-sky-500 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-500/20">
-              <Layers className="text-white w-7 h-7" />
+              <Layers className="w-7 h-7" />
             </div>
             <div>
-              <h1 className="text-2xl font-black tracking-tight uppercase">Asset Forge</h1>
-              <p className="text-[10px] text-zinc-500 font-bold tracking-[0.2em] uppercase">Professional Generator</p>
+              <h1 className="text-2xl font-black tracking-tighter uppercase">Asset Forge</h1>
+              <p className="text-[10px] text-sky-400 font-bold tracking-widest uppercase">Pro Edition</p>
             </div>
           </div>
 
-          <div className="flex bg-zinc-900/50 p-1 rounded-2xl border border-white/5 backdrop-blur-md">
+          <div className="flex bg-zinc-900 rounded-xl p-1 border border-white/5">
             <button 
               onClick={() => setAssetType('icon')}
-              className={`px-6 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${assetType === 'icon' ? 'bg-zinc-800 text-white shadow-xl' : 'text-zinc-500 hover:text-zinc-300'}`}
+              className={`px-6 py-2 rounded-lg text-xs font-bold transition-all ${assetType === 'icon' ? 'bg-sky-500 text-white' : 'text-zinc-500'}`}
             >
-              <ImageIcon className="w-4 h-4" /> ICONS
+              ICONS
             </button>
             <button 
               onClick={() => setAssetType('button')}
-              className={`px-6 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${assetType === 'button' ? 'bg-zinc-800 text-white shadow-xl' : 'text-zinc-500 hover:text-zinc-300'}`}
+              className={`px-6 py-2 rounded-lg text-xs font-bold transition-all ${assetType === 'button' ? 'bg-sky-500 text-white' : 'text-zinc-500'}`}
             >
-              <Square className="w-4 h-4" /> BUTTONS
+              UI ELEMENTS
             </button>
           </div>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="grid lg:grid-cols-12 gap-10">
+          {/* Controls */}
           <div className="lg:col-span-4 space-y-6">
-            <div className="bg-zinc-900 border border-white/5 rounded-[32px] p-6 shadow-2xl relative overflow-hidden group">
-              <div className="space-y-6">
+            <div className="bg-zinc-900 border border-white/5 rounded-3xl p-6 shadow-2xl">
+              <div className="space-y-5">
                 <div>
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-3 text-sky-400">Asset Description</label>
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-2">Prompt</label>
                   <textarea 
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="e.g. golden sword with ruby..."
-                    className="w-full h-32 bg-zinc-950 border border-white/5 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-sky-500/50 outline-none transition-all resize-none"
+                    placeholder="e.g. Magic healing potion bottle..."
+                    className="w-full h-28 bg-black border border-white/10 rounded-xl p-4 text-sm focus:border-sky-500 outline-none transition-all resize-none"
                   />
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-3 text-sky-400">Visual Style</label>
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-2">Style</label>
                   <select 
                     value={style}
                     onChange={(e) => setStyle(e.target.value)}
-                    className="w-full bg-zinc-950 border border-white/5 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-sky-500/50 outline-none cursor-pointer appearance-none"
+                    className="w-full bg-black border border-white/10 rounded-xl p-3 text-sm focus:border-sky-500 outline-none appearance-none"
                   >
-                    <option value="Flat Vector">Flat Vector (Clean)</option>
-                    <option value="Cartoon 3D">Cartoon 3D (Bubbly)</option>
-                    <option value="Pixel Art">Pixel Art (Retro)</option>
-                    <option value="Game UI Gold">Game UI (Shiny/Luxury)</option>
+                    <option>Flat Vector</option>
+                    <option>Fantasy RPG</option>
+                    <option>Cyberpunk</option>
+                    <option>3D Render</option>
                   </select>
                 </div>
 
                 <button 
                   onClick={() => handleGenerate()}
                   disabled={isGenerating || !prompt}
-                  className="w-full h-14 bg-sky-600 hover:bg-sky-500 disabled:opacity-20 text-white rounded-2xl font-bold transition-all flex items-center justify-center gap-3 group shadow-lg"
+                  className="w-full py-4 bg-sky-500 hover:bg-sky-400 disabled:opacity-30 disabled:hover:bg-sky-500 text-white rounded-xl font-black text-xs tracking-widest transition-all flex items-center justify-center gap-3"
                 >
-                  {isGenerating ? (
-                    <><Loader2 className="w-5 h-5 animate-spin" /><span>FORGING...</span></>
-                  ) : (
-                    <><Wand2 className="w-5 h-5 group-hover:rotate-12 transition-transform" /><span>CREATE ASSET</span></>
-                  )}
+                  {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                  GENERATE ASSET
                 </button>
-                {error && <p className="text-red-400 text-xs text-center font-medium">{error}</p>}
+
+                {error && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2 text-red-400 text-[10px] font-bold">
+                    <AlertCircle className="w-3 h-3" /> {error}
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
+          {/* Results Grid */}
           <div className="lg:col-span-8">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="grid sm:grid-cols-2 gap-6">
               {assets.length === 0 && !isGenerating && (
-                <div className="col-span-full border-2 border-dashed border-zinc-800 rounded-[40px] py-32 flex flex-col items-center justify-center text-zinc-600">
-                  <ImageIcon className="w-12 h-12 mb-4 opacity-20" />
-                  <p className="text-sm font-bold tracking-widest uppercase opacity-40">Your forge is empty</p>
+                <div className="col-span-full h-80 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center text-zinc-700">
+                  <ImageIcon className="w-12 h-12 mb-4 opacity-10" />
+                  <p className="text-[10px] font-black uppercase tracking-widest">Awaiting creation</p>
                 </div>
               )}
 
               {isGenerating && (
-                <div className="aspect-square bg-zinc-900/50 rounded-[40px] border border-white/5 animate-pulse flex flex-col items-center justify-center">
-                  <Loader2 className="w-8 h-8 text-sky-500 animate-spin mb-4" />
-                  <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Creating Magic...</p>
+                <div className="aspect-square bg-zinc-900 border border-white/5 rounded-3xl flex flex-col items-center justify-center">
+                  <Loader2 className="w-8 h-8 text-sky-500 animate-spin mb-3" />
+                  <p className="text-[10px] font-black text-zinc-500 uppercase tracking-tighter">Forging new asset...</p>
                 </div>
               )}
 
               {assets.map((asset) => (
-                <div key={asset.id} className="group bg-zinc-900/80 border border-white/5 rounded-[40px] overflow-hidden hover:border-sky-500/40 transition-all shadow-xl relative">
-                  <div className="aspect-square bg-white flex items-center justify-center p-8 relative overflow-hidden">
-                    {regeneratingId === asset.id ? (
-                      <div className="absolute inset-0 bg-white/90 z-10 flex flex-col items-center justify-center">
-                        <Loader2 className="w-8 h-8 text-sky-500 animate-spin mb-2" />
-                        <span className="text-[10px] font-black text-zinc-400 uppercase">Updating...</span>
+                <div key={asset.id} className="group bg-zinc-900 border border-white/5 rounded-3xl overflow-hidden relative">
+                  <div className="aspect-square bg-white flex items-center justify-center p-6 relative">
+                    {regeneratingId === asset.id && (
+                      <div className="absolute inset-0 bg-white/80 z-10 flex items-center justify-center">
+                        <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
                       </div>
-                    ) : null}
-                    
+                    )}
                     <img 
                       src={asset.url} 
                       alt={asset.name} 
-                      className={`w-full h-full object-contain drop-shadow-2xl transition-all ${regeneratingId === asset.id ? 'blur-sm grayscale' : ''}`}
+                      className="w-full h-full object-contain drop-shadow-xl" 
                     />
                     
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                    {/* Hover Overlay */}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
                       <button 
                         onClick={() => handleGenerate(asset)}
-                        className="w-11 h-11 bg-sky-500 text-white rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-lg"
-                        title="Regenerate"
+                        className="p-3 bg-sky-500 rounded-full hover:scale-110 transition-transform"
                       >
                         <RefreshCw className="w-5 h-5" />
                       </button>
@@ -254,29 +230,24 @@ const App = () => {
                           link.download = `${asset.name}.png`;
                           link.click();
                         }}
-                        className="w-11 h-11 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-lg"
-                        title="Download"
+                        className="p-3 bg-white text-black rounded-full hover:scale-110 transition-transform"
                       >
                         <Download className="w-5 h-5" />
                       </button>
                       <button 
                         onClick={() => setAssets(assets.filter(a => a.id !== asset.id))}
-                        className="w-11 h-11 bg-red-500 text-white rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-lg"
-                        title="Delete"
+                        className="p-3 bg-red-500 rounded-full hover:scale-110 transition-transform"
                       >
                         <Trash2 className="w-5 h-5" />
                       </button>
                     </div>
                   </div>
-                  <div className="p-5 flex items-center justify-between">
-                    <div className="truncate pr-4">
-                      <h3 className="text-xs font-black text-white uppercase tracking-wider truncate">{asset.name}</h3>
-                      <p className="text-[9px] text-zinc-500 font-bold uppercase mt-1">{asset.style}</p>
+                  <div className="p-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-[10px] font-black uppercase text-white tracking-widest truncate max-w-[120px]">{asset.name}</h3>
+                      <p className="text-[8px] text-zinc-500 font-bold uppercase">{asset.style}</p>
                     </div>
-                    <div className="flex flex-col items-end">
-                       <span className="px-2 py-0.5 bg-sky-500/10 text-sky-400 rounded text-[7px] font-black uppercase mb-1">HQ</span>
-                       <span className="text-[8px] font-black text-zinc-600 uppercase">PNG</span>
-                    </div>
+                    <span className="text-[8px] font-black px-2 py-1 bg-zinc-800 rounded">PNG</span>
                   </div>
                 </div>
               ))}
