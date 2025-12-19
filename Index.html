@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="uk">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Asset Forge Pro | Fixed Edition</title>
+    <title>Asset Forge Pro | Neural Engine</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -41,12 +41,24 @@
         
         .asset-card {
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .asset-card:hover {
             transform: translateY(-4px);
             border-color: rgba(14, 165, 233, 0.3);
         }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #09090b; }
+        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
     </style>
 </head>
 <body class="min-h-screen">
@@ -85,12 +97,12 @@
                             <label class="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-2">Art Style</label>
                             <div class="relative">
                                 <select id="styleSelect" class="w-full bg-black border border-white/10 rounded-xl p-3 text-sm focus:border-sky-500 outline-none cursor-pointer text-zinc-300 appearance-none">
-                                    <option value="Flat vector game icon, mobile style">Flat Vector</option>
-                                    <option value="Isometric 3D render, high quality digital art">Isometric 3D</option>
-                                    <option value="Retro 16-bit pixel art, arcade style">Retro Pixel Art</option>
-                                    <option value="Hand-painted fantasy RPG illustration">Fantasy Hand-painted</option>
-                                    <option value="Cyberpunk glowing neon holographic style">Cyberpunk Neon</option>
-                                    <option value="Clean minimalist modern game UI element">Minimalist</option>
+                                    <option value="Flat vector game icon, mobile style, clean lines">Flat Vector</option>
+                                    <option value="Isometric 3D render, high quality digital art, unreal engine 5">Isometric 3D</option>
+                                    <option value="Retro 16-bit pixel art, arcade style, pixelated">Retro Pixel Art</option>
+                                    <option value="Hand-painted fantasy RPG illustration, soft brushstrokes">Fantasy Hand-painted</option>
+                                    <option value="Cyberpunk glowing neon holographic style, high contrast">Cyberpunk Neon</option>
+                                    <option value="Clean minimalist modern game UI element, white background">Minimalist</option>
                                 </select>
                                 <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none text-xs"></i>
                             </div>
@@ -108,6 +120,14 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Stats/Info -->
+                <div class="glass rounded-2xl p-4 border border-white/5">
+                    <div class="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                        <span>Stored Assets</span>
+                        <span id="assetCount" class="text-sky-500">0</span>
+                    </div>
+                </div>
             </aside>
 
             <!-- Main Content -->
@@ -122,110 +142,183 @@
         </div>
     </div>
 
-    <script>
+    <!-- Firebase & Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, doc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
         const apiKey = ""; 
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'asset-forge-pro';
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let currentUser = null;
         let currentType = 'icon';
 
-        function setType(type) {
+        // Set global access for simple onclicks
+        window.setType = (type) => {
             currentType = type;
             const isIcon = type === 'icon';
             document.getElementById('btn-icon').className = isIcon ? 'px-6 py-2 rounded-lg text-xs font-bold bg-sky-500 text-white' : 'px-6 py-2 rounded-lg text-xs font-bold text-zinc-500 hover:text-zinc-300';
             document.getElementById('btn-ui').className = !isIcon ? 'px-6 py-2 rounded-lg text-xs font-bold bg-sky-500 text-white' : 'px-6 py-2 rounded-lg text-xs font-bold text-zinc-500 hover:text-zinc-300';
             document.getElementById('promptInput').placeholder = isIcon ? "Ex: Health potion..." : "Ex: Main menu button...";
+        };
+
+        // Auth
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                loadAssets();
+            } else {
+                signInAnonymously(auth);
+            }
+        });
+
+        async function loadAssets() {
+            if (!currentUser) return;
+            const assetsRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'assets');
+            
+            onSnapshot(assetsRef, (snapshot) => {
+                const grid = document.getElementById('assetsGrid');
+                const placeholder = document.getElementById('placeholder');
+                
+                // Keep only placeholder if empty
+                const existingCards = document.querySelectorAll('.asset-card');
+                existingCards.forEach(c => c.remove());
+
+                if (snapshot.empty) {
+                    placeholder.classList.remove('hidden');
+                    document.getElementById('assetCount').innerText = "0";
+                    return;
+                }
+
+                placeholder.classList.add('hidden');
+                document.getElementById('assetCount').innerText = snapshot.size;
+
+                const docs = snapshot.docs.map(d => ({id: d.id, ...d.data()}))
+                    .sort((a, b) => b.timestamp - a.timestamp);
+
+                docs.forEach(data => renderCard(data));
+            });
         }
 
-        async function generateAsset() {
-            const promptVal = document.getElementById('promptInput').value.trim();
+        window.generateAsset = async () => {
+            const promptInput = document.getElementById('promptInput');
+            const promptVal = promptInput.value.trim();
             const style = document.getElementById('styleSelect').value;
             const genBtn = document.getElementById('genBtn');
             const errorDiv = document.getElementById('errorMessage');
 
-            if (!promptVal) return;
+            if (!promptVal || !currentUser) return;
 
             genBtn.disabled = true;
             genBtn.innerHTML = '<div class="loader"></div> PROCESSING...';
             errorDiv.classList.add('hidden');
-            document.getElementById('placeholder').classList.add('hidden');
 
             try {
                 const context = currentType === 'icon' ? 'isolated game icon' : 'game UI element panel';
-                // Important: Asking for the image via text prompt for the image-preview model
-                const finalPrompt = `Generate a high-quality game asset: ${promptVal}. Style: ${style}. Context: ${context}. White background, centered, professional. Return the result as an IMAGE.`;
+                const finalPrompt = `Professional game asset: ${promptVal}. Style: ${style}. Context: ${context}. White background, high resolution, centered. Return as an IMAGE.`;
 
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`, {
+                // Use the image preview model as requested
+                const response = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         contents: [{ parts: [{ text: finalPrompt }] }],
-                        generationConfig: { 
-                            responseModalities: ['IMAGE'] 
-                        }
+                        generationConfig: { responseModalities: ['IMAGE'] }
                     })
                 });
 
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                
                 const data = await response.json();
                 const base64 = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
 
                 if (base64) {
-                    renderCard(`data:image/png;base64,${base64}`, promptVal, style);
-                    document.getElementById('promptInput').value = '';
+                    const assetData = {
+                        url: `data:image/png;base64,${base64}`,
+                        name: promptVal,
+                        style: style.split(',')[0],
+                        timestamp: Date.now()
+                    };
+
+                    await addDoc(collection(db, 'artifacts', appId, 'users', currentUser.uid, 'assets'), assetData);
+                    promptInput.value = '';
                 } else {
-                    throw new Error("Model did not return an image. Try a different prompt.");
+                    throw new Error("No image data returned from neural engine.");
                 }
 
             } catch (err) {
                 console.error(err);
                 errorDiv.classList.remove('hidden');
-                document.getElementById('errorText').innerText = "Error: " + err.message;
-                checkEmpty();
+                document.getElementById('errorText').innerText = err.message;
             } finally {
                 genBtn.disabled = false;
                 genBtn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> GENERATE ASSET';
             }
+        };
+
+        async function fetchWithRetry(url, options, retries = 5) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const res = await fetch(url, options);
+                    if (res.ok) return res;
+                    if (res.status !== 429) throw new Error(`Neural Engine Error: ${res.status}`);
+                } catch (e) {
+                    if (i === retries - 1) throw e;
+                }
+                await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+            }
         }
 
-        function renderCard(url, name, style) {
+        function renderCard(data) {
             const grid = document.getElementById('assetsGrid');
             const card = document.createElement('div');
             card.className = "asset-card group glass rounded-3xl overflow-hidden relative border border-white/5";
-            const styleTag = style.split(' ')[0];
+            card.id = `card-${data.id}`;
 
             card.innerHTML = `
                 <div class="aspect-square bg-white flex items-center justify-center p-6 relative overflow-hidden">
-                    <img src="${url}" class="w-full h-full object-contain drop-shadow-2xl z-10 transition-transform duration-500 group-hover:scale-110" alt="Asset">
+                    <img src="${data.url}" class="w-full h-full object-contain drop-shadow-2xl z-10 transition-transform duration-500 group-hover:scale-110" alt="Asset">
                     <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center gap-4 z-20 backdrop-blur-sm">
-                        <button onclick="downloadAsset('${url}', '${name}')" class="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:bg-sky-500 hover:text-white transition-all transform hover:scale-110">
+                        <button onclick="window.downloadAsset('${data.url}', '${data.name}')" class="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:bg-sky-500 hover:text-white transition-all transform hover:scale-110">
                             <i class="fas fa-download"></i>
                         </button>
-                        <button onclick="this.closest('.asset-card').remove(); checkEmpty();" class="w-12 h-12 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all transform hover:scale-110">
+                        <button onclick="window.deleteAsset('${data.id}')" class="w-12 h-12 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all transform hover:scale-110">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
                 </div>
                 <div class="p-5 flex justify-between items-center bg-zinc-900/40">
                     <div>
-                        <h4 class="text-[10px] font-black uppercase tracking-widest text-white">${name}</h4>
-                        <p class="text-[8px] font-bold text-zinc-500 uppercase mt-1">${styleTag}</p>
+                        <h4 class="text-[10px] font-black uppercase tracking-widest text-white truncate max-w-[150px]">${data.name}</h4>
+                        <p class="text-[8px] font-bold text-zinc-500 uppercase mt-1">${data.style}</p>
+                    </div>
+                    <div class="text-[8px] font-bold text-zinc-700 uppercase">
+                        ${new Date(data.timestamp).toLocaleDateString()}
                     </div>
                 </div>
             `;
-            grid.prepend(card);
+            grid.appendChild(card);
         }
 
-        function checkEmpty() {
-            if (document.querySelectorAll('.asset-card').length === 0) {
-                document.getElementById('placeholder').classList.remove('hidden');
-            }
-        }
-
-        function downloadAsset(url, name) {
+        window.downloadAsset = (url, name) => {
             const link = document.createElement('a');
             link.href = url;
-            link.download = `asset_${name.replace(/\s+/g, '_')}.png`;
+            link.download = `asset_${name.replace(/\s+/g, '_').toLowerCase()}.png`;
             link.click();
-        }
+        };
+
+        window.deleteAsset = async (id) => {
+            if (!currentUser) return;
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'assets', id));
+            } catch (err) {
+                console.error("Delete failed:", err);
+            }
+        };
     </script>
 </body>
 </html>
