@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Asset Forge Pro | Neural Engine</title>
+    <title>Asset Forge Pro | Fixed Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -41,24 +41,18 @@
         
         .asset-card {
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            animation: fadeIn 0.5s ease-out;
+            animation: fadeIn 0.4s ease-out;
         }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
         }
 
         .asset-card:hover {
             transform: translateY(-4px);
             border-color: rgba(14, 165, 233, 0.3);
         }
-
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #09090b; }
-        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
     </style>
 </head>
 <body class="min-h-screen">
@@ -77,8 +71,8 @@
             </div>
 
             <div class="flex bg-zinc-900 rounded-xl p-1 border border-white/5 shadow-inner" id="typeToggle">
-                <button onclick="setType('icon')" id="btn-icon" class="px-6 py-2 rounded-lg text-xs font-bold transition-all bg-sky-500 text-white">ICONS</button>
-                <button onclick="setType('ui')" id="btn-ui" class="px-6 py-2 rounded-lg text-xs font-bold transition-all text-zinc-500 hover:text-zinc-300">UI ELEMENTS</button>
+                <button onclick="window.setType('icon')" id="btn-icon" class="px-6 py-2 rounded-lg text-xs font-bold transition-all bg-sky-500 text-white">ICONS</button>
+                <button onclick="window.setType('ui')" id="btn-ui" class="px-6 py-2 rounded-lg text-xs font-bold transition-all text-zinc-500 hover:text-zinc-300">UI ELEMENTS</button>
             </div>
         </header>
 
@@ -97,18 +91,18 @@
                             <label class="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-2">Art Style</label>
                             <div class="relative">
                                 <select id="styleSelect" class="w-full bg-black border border-white/10 rounded-xl p-3 text-sm focus:border-sky-500 outline-none cursor-pointer text-zinc-300 appearance-none">
-                                    <option value="Flat vector game icon, mobile style, clean lines">Flat Vector</option>
-                                    <option value="Isometric 3D render, high quality digital art, unreal engine 5">Isometric 3D</option>
-                                    <option value="Retro 16-bit pixel art, arcade style, pixelated">Retro Pixel Art</option>
-                                    <option value="Hand-painted fantasy RPG illustration, soft brushstrokes">Fantasy Hand-painted</option>
-                                    <option value="Cyberpunk glowing neon holographic style, high contrast">Cyberpunk Neon</option>
-                                    <option value="Clean minimalist modern game UI element, white background">Minimalist</option>
+                                    <option value="Flat vector game icon, mobile style">Flat Vector</option>
+                                    <option value="Isometric 3D render, high quality digital art">Isometric 3D</option>
+                                    <option value="Retro 16-bit pixel art, arcade style">Retro Pixel Art</option>
+                                    <option value="Hand-painted fantasy RPG illustration">Fantasy Hand-painted</option>
+                                    <option value="Cyberpunk glowing neon holographic style">Cyberpunk Neon</option>
+                                    <option value="Clean minimalist modern game UI element">Minimalist</option>
                                 </select>
                                 <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none text-xs"></i>
                             </div>
                         </div>
 
-                        <button id="genBtn" onclick="generateAsset()" 
+                        <button id="genBtn" onclick="window.generateAsset()" 
                             class="w-full py-4 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-black text-xs tracking-widest transition-all flex items-center justify-center gap-3 shadow-lg shadow-sky-500/10">
                             <i class="fas fa-wand-magic-sparkles"></i>
                             GENERATE ASSET
@@ -120,13 +114,10 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- Stats/Info -->
-                <div class="glass rounded-2xl p-4 border border-white/5">
-                    <div class="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                        <span>Stored Assets</span>
-                        <span id="assetCount" class="text-sky-500">0</span>
-                    </div>
+                
+                <div class="glass rounded-2xl p-4 text-center">
+                   <p class="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Storage Status</p>
+                   <p id="storageStatus" class="text-xs text-sky-400 mt-1">Initializing...</p>
                 </div>
             </aside>
 
@@ -142,69 +133,34 @@
         </div>
     </div>
 
-    <!-- Firebase & Logic -->
+    <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, doc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
+        // Global State & Config
         const apiKey = ""; 
         const firebaseConfig = JSON.parse(__firebase_config);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'asset-forge-pro';
-
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'asset-forge-default';
+        
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
-
+        
         let currentUser = null;
         let currentType = 'icon';
 
-        // Set global access for simple onclicks
+        // --- EXPOSE FUNCTIONS TO WINDOW ---
+        // This makes them clickable from HTML onclick=""
+
         window.setType = (type) => {
             currentType = type;
             const isIcon = type === 'icon';
             document.getElementById('btn-icon').className = isIcon ? 'px-6 py-2 rounded-lg text-xs font-bold bg-sky-500 text-white' : 'px-6 py-2 rounded-lg text-xs font-bold text-zinc-500 hover:text-zinc-300';
             document.getElementById('btn-ui').className = !isIcon ? 'px-6 py-2 rounded-lg text-xs font-bold bg-sky-500 text-white' : 'px-6 py-2 rounded-lg text-xs font-bold text-zinc-500 hover:text-zinc-300';
-            document.getElementById('promptInput').placeholder = isIcon ? "Ex: Health potion..." : "Ex: Main menu button...";
+            document.getElementById('promptInput').placeholder = isIcon ? "Ex: Magic sword..." : "Ex: Main menu panel...";
         };
-
-        // Auth
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                currentUser = user;
-                loadAssets();
-            } else {
-                signInAnonymously(auth);
-            }
-        });
-
-        async function loadAssets() {
-            if (!currentUser) return;
-            const assetsRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'assets');
-            
-            onSnapshot(assetsRef, (snapshot) => {
-                const grid = document.getElementById('assetsGrid');
-                const placeholder = document.getElementById('placeholder');
-                
-                // Keep only placeholder if empty
-                const existingCards = document.querySelectorAll('.asset-card');
-                existingCards.forEach(c => c.remove());
-
-                if (snapshot.empty) {
-                    placeholder.classList.remove('hidden');
-                    document.getElementById('assetCount').innerText = "0";
-                    return;
-                }
-
-                placeholder.classList.add('hidden');
-                document.getElementById('assetCount').innerText = snapshot.size;
-
-                const docs = snapshot.docs.map(d => ({id: d.id, ...d.data()}))
-                    .sort((a, b) => b.timestamp - a.timestamp);
-
-                docs.forEach(data => renderCard(data));
-            });
-        }
 
         window.generateAsset = async () => {
             const promptInput = document.getElementById('promptInput');
@@ -220,11 +176,10 @@
             errorDiv.classList.add('hidden');
 
             try {
-                const context = currentType === 'icon' ? 'isolated game icon' : 'game UI element panel';
-                const finalPrompt = `Professional game asset: ${promptVal}. Style: ${style}. Context: ${context}. White background, high resolution, centered. Return as an IMAGE.`;
+                const context = currentType === 'icon' ? 'isolated game asset' : 'game UI component';
+                const finalPrompt = `High quality ${context}: ${promptVal}. Art style: ${style}. White background, centered, professional studio lighting. Return result as an IMAGE.`;
 
-                // Use the image preview model as requested
-                const response = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`, {
+                const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -233,23 +188,20 @@
                     })
                 });
 
-                const data = await response.json();
+                const data = await result.json();
                 const base64 = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
 
                 if (base64) {
-                    const assetData = {
+                    await addDoc(collection(db, 'artifacts', appId, 'users', currentUser.uid, 'assets'), {
                         url: `data:image/png;base64,${base64}`,
                         name: promptVal,
-                        style: style.split(',')[0],
+                        style: style.split(' ')[0],
                         timestamp: Date.now()
-                    };
-
-                    await addDoc(collection(db, 'artifacts', appId, 'users', currentUser.uid, 'assets'), assetData);
+                    });
                     promptInput.value = '';
                 } else {
-                    throw new Error("No image data returned from neural engine.");
+                    throw new Error("Neural Engine failed to return an image.");
                 }
-
             } catch (err) {
                 console.error(err);
                 errorDiv.classList.remove('hidden');
@@ -260,12 +212,28 @@
             }
         };
 
+        window.deleteAsset = async (id) => {
+            if (!currentUser) return;
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'assets', id));
+            } catch (err) { console.error("Delete error:", err); }
+        };
+
+        window.downloadAsset = (url, name) => {
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `forge_${name.replace(/\s+/g, '_')}.png`;
+            link.click();
+        };
+
+        // --- CORE LOGIC ---
+
         async function fetchWithRetry(url, options, retries = 5) {
             for (let i = 0; i < retries; i++) {
                 try {
                     const res = await fetch(url, options);
                     if (res.ok) return res;
-                    if (res.status !== 429) throw new Error(`Neural Engine Error: ${res.status}`);
+                    if (res.status !== 429) throw new Error(`HTTP ${res.status}`);
                 } catch (e) {
                     if (i === retries - 1) throw e;
                 }
@@ -273,52 +241,82 @@
             }
         }
 
-        function renderCard(data) {
+        function renderCard(id, data) {
             const grid = document.getElementById('assetsGrid');
             const card = document.createElement('div');
             card.className = "asset-card group glass rounded-3xl overflow-hidden relative border border-white/5";
-            card.id = `card-${data.id}`;
-
+            card.id = `card-${id}`;
+            
             card.innerHTML = `
-                <div class="aspect-square bg-white flex items-center justify-center p-6 relative overflow-hidden">
-                    <img src="${data.url}" class="w-full h-full object-contain drop-shadow-2xl z-10 transition-transform duration-500 group-hover:scale-110" alt="Asset">
+                <div class="aspect-square bg-white flex items-center justify-center p-6 relative">
+                    <img src="${data.url}" class="w-full h-full object-contain drop-shadow-2xl z-10 transition-transform group-hover:scale-110" alt="Asset">
                     <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center gap-4 z-20 backdrop-blur-sm">
                         <button onclick="window.downloadAsset('${data.url}', '${data.name}')" class="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:bg-sky-500 hover:text-white transition-all transform hover:scale-110">
                             <i class="fas fa-download"></i>
                         </button>
-                        <button onclick="window.deleteAsset('${data.id}')" class="w-12 h-12 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all transform hover:scale-110">
+                        <button onclick="window.deleteAsset('${id}')" class="w-12 h-12 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all transform hover:scale-110">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
                 </div>
                 <div class="p-5 flex justify-between items-center bg-zinc-900/40">
                     <div>
-                        <h4 class="text-[10px] font-black uppercase tracking-widest text-white truncate max-w-[150px]">${data.name}</h4>
+                        <h4 class="text-[10px] font-black uppercase tracking-widest text-white truncate max-w-[120px]">${data.name}</h4>
                         <p class="text-[8px] font-bold text-zinc-500 uppercase mt-1">${data.style}</p>
-                    </div>
-                    <div class="text-[8px] font-bold text-zinc-700 uppercase">
-                        ${new Date(data.timestamp).toLocaleDateString()}
                     </div>
                 </div>
             `;
-            grid.appendChild(card);
+            grid.prepend(card);
         }
 
-        window.downloadAsset = (url, name) => {
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `asset_${name.replace(/\s+/g, '_').toLowerCase()}.png`;
-            link.click();
-        };
+        // --- INITIALIZATION ---
 
-        window.deleteAsset = async (id) => {
-            if (!currentUser) return;
+        const initAuth = async () => {
             try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'assets', id));
-            } catch (err) {
-                console.error("Delete failed:", err);
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (e) {
+                console.error("Auth init failed", e);
+                document.getElementById('storageStatus').innerText = "Auth Error";
             }
         };
+
+        initAuth();
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                document.getElementById('storageStatus').innerText = "Cloud Sync Active";
+                
+                // Real-time updates
+                const assetsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'assets');
+                onSnapshot(assetsRef, (snapshot) => {
+                    const grid = document.getElementById('assetsGrid');
+                    const placeholder = document.getElementById('placeholder');
+                    
+                    // Clear current items (except placeholder)
+                    const items = grid.querySelectorAll('.asset-card');
+                    items.forEach(i => i.remove());
+
+                    if (snapshot.empty) {
+                        placeholder.classList.remove('hidden');
+                    } else {
+                        placeholder.classList.add('hidden');
+                        // Sort by timestamp
+                        const sortedDocs = snapshot.docs.map(d => ({id: d.id, ...d.data()}))
+                            .sort((a, b) => a.timestamp - b.timestamp);
+                        
+                        sortedDocs.forEach(docData => renderCard(docData.id, docData));
+                    }
+                }, (err) => {
+                    console.error("Firestore error:", err);
+                    document.getElementById('storageStatus').innerText = "Sync Error";
+                });
+            }
+        });
     </script>
 </body>
 </html>
