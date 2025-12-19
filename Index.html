@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Asset Forge Pro | AI Game Assets</title>
+    <title>Asset Forge Pro | Fixed Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -47,12 +47,6 @@
             transform: translateY(-4px);
             border-color: rgba(14, 165, 233, 0.3);
         }
-
-        select {
-            -webkit-appearance: none;
-            -moz-appearance: none;
-            appearance: none;
-        }
     </style>
 </head>
 <body class="min-h-screen">
@@ -66,7 +60,7 @@
                 </div>
                 <div>
                     <h1 class="text-2xl font-black tracking-tighter uppercase leading-none">Asset Forge</h1>
-                    <p class="text-[10px] text-sky-400 font-bold tracking-widest uppercase mt-1">Stable Edition • AI Engine</p>
+                    <p class="text-[10px] text-sky-400 font-bold tracking-widest uppercase mt-1">Stable Edition • Engine 2.5</p>
                 </div>
             </div>
 
@@ -90,7 +84,7 @@
                         <div>
                             <label class="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-2">Art Style</label>
                             <div class="relative">
-                                <select id="styleSelect" class="w-full bg-black border border-white/10 rounded-xl p-3 text-sm focus:border-sky-500 outline-none cursor-pointer text-zinc-300">
+                                <select id="styleSelect" class="w-full bg-black border border-white/10 rounded-xl p-3 text-sm focus:border-sky-500 outline-none cursor-pointer text-zinc-300 appearance-none">
                                     <option value="Flat vector game icon, mobile style">Flat Vector</option>
                                     <option value="Isometric 3D render, high quality digital art">Isometric 3D</option>
                                     <option value="Retro 16-bit pixel art, arcade style">Retro Pixel Art</option>
@@ -119,7 +113,6 @@
             <!-- Main Content -->
             <main class="lg:col-span-8">
                 <div id="assetsGrid" class="grid sm:grid-cols-2 gap-6 pb-20">
-                    <!-- Placeholder -->
                     <div id="placeholder" class="col-span-full h-80 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center text-zinc-700">
                         <i class="far fa-image text-5xl mb-4 opacity-10"></i>
                         <p class="text-[10px] font-black uppercase tracking-widest">Awaiting prompt</p>
@@ -138,33 +131,7 @@
             const isIcon = type === 'icon';
             document.getElementById('btn-icon').className = isIcon ? 'px-6 py-2 rounded-lg text-xs font-bold bg-sky-500 text-white' : 'px-6 py-2 rounded-lg text-xs font-bold text-zinc-500 hover:text-zinc-300';
             document.getElementById('btn-ui').className = !isIcon ? 'px-6 py-2 rounded-lg text-xs font-bold bg-sky-500 text-white' : 'px-6 py-2 rounded-lg text-xs font-bold text-zinc-500 hover:text-zinc-300';
-            
-            document.getElementById('promptInput').placeholder = isIcon ? 
-                "Ex: Health potion, game icon..." : 
-                "Ex: Main menu button, inventory panel...";
-        }
-
-        async function fetchWithRetry(url, options, retries = 5) {
-            let delay = 1000;
-            for (let i = 0; i < retries; i++) {
-                try {
-                    const response = await fetch(url, options);
-                    if (response.ok) return await response.json();
-                    
-                    if (response.status === 429 || response.status >= 500) {
-                        await new Promise(r => setTimeout(r, delay));
-                        delay *= 2;
-                        continue;
-                    }
-                    
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.error?.message || "API Error");
-                } catch (e) {
-                    if (i === retries - 1) throw e;
-                    await new Promise(r => setTimeout(r, delay));
-                    delay *= 2;
-                }
-            }
+            document.getElementById('promptInput').placeholder = isIcon ? "Ex: Health potion..." : "Ex: Main menu button...";
         }
 
         async function generateAsset() {
@@ -176,38 +143,43 @@
             if (!promptVal) return;
 
             genBtn.disabled = true;
-            genBtn.innerHTML = '<div class="loader"></div> GENERATING...';
+            genBtn.innerHTML = '<div class="loader"></div> PROCESSING...';
             errorDiv.classList.add('hidden');
             document.getElementById('placeholder').classList.add('hidden');
 
             try {
                 const context = currentType === 'icon' ? 'isolated game icon' : 'game UI element panel';
-                const finalPrompt = `${style} of ${promptVal}, ${context}, white background, high quality, professional asset, game art.`;
+                // Important: Asking for the image via text prompt for the image-preview model
+                const finalPrompt = `Generate a high-quality game asset: ${promptVal}. Style: ${style}. Context: ${context}. White background, centered, professional. Return the result as an IMAGE.`;
 
-                const data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`, {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        instances: [{ prompt: finalPrompt }],
-                        parameters: { sampleCount: 1 }
+                        contents: [{ parts: [{ text: finalPrompt }] }],
+                        generationConfig: { 
+                            responseModalities: ['IMAGE'] 
+                        }
                     })
                 });
 
-                if (data.predictions && data.predictions[0]) {
-                    const base64 = data.predictions[0].bytesBase64Encoded;
-                    const imgUrl = `data:image/png;base64,${base64}`;
-                    renderCard(imgUrl, promptVal, style);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const data = await response.json();
+                const base64 = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+
+                if (base64) {
+                    renderCard(`data:image/png;base64,${base64}`, promptVal, style);
                     document.getElementById('promptInput').value = '';
                 } else {
                     throw new Error("Model did not return an image. Try a different prompt.");
                 }
 
             } catch (err) {
+                console.error(err);
                 errorDiv.classList.remove('hidden');
-                document.getElementById('errorText').innerText = err.message;
-                if (document.querySelectorAll('.asset-card').length === 0) {
-                    document.getElementById('placeholder').classList.remove('hidden');
-                }
+                document.getElementById('errorText').innerText = "Error: " + err.message;
+                checkEmpty();
             } finally {
                 genBtn.disabled = false;
                 genBtn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> GENERATE ASSET';
@@ -218,29 +190,25 @@
             const grid = document.getElementById('assetsGrid');
             const card = document.createElement('div');
             card.className = "asset-card group glass rounded-3xl overflow-hidden relative border border-white/5";
-            
             const styleTag = style.split(' ')[0];
 
             card.innerHTML = `
                 <div class="aspect-square bg-white flex items-center justify-center p-6 relative overflow-hidden">
-                    <div class="absolute inset-0 opacity-[0.03]" style="background-image: radial-gradient(#000 1px, transparent 1px); background-size: 15px 15px;"></div>
-                    <img src="${url}" class="w-full h-full object-contain drop-shadow-2xl z-10 transition-transform duration-500 group-hover:scale-110" alt="Generated asset">
-                    
+                    <img src="${url}" class="w-full h-full object-contain drop-shadow-2xl z-10 transition-transform duration-500 group-hover:scale-110" alt="Asset">
                     <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center gap-4 z-20 backdrop-blur-sm">
-                        <button onclick="downloadAsset('${url}', '${name}')" title="Download PNG" class="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:bg-sky-500 hover:text-white transition-all transform hover:scale-110 active:scale-90">
+                        <button onclick="downloadAsset('${url}', '${name}')" class="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:bg-sky-500 hover:text-white transition-all transform hover:scale-110">
                             <i class="fas fa-download"></i>
                         </button>
-                        <button onclick="this.closest('.asset-card').remove(); checkEmpty();" title="Remove" class="w-12 h-12 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all transform hover:scale-110 active:scale-90">
+                        <button onclick="this.closest('.asset-card').remove(); checkEmpty();" class="w-12 h-12 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all transform hover:scale-110">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
                 </div>
                 <div class="p-5 flex justify-between items-center bg-zinc-900/40">
-                    <div class="overflow-hidden">
-                        <h4 class="text-[10px] font-black uppercase tracking-widest truncate text-white">${name}</h4>
+                    <div>
+                        <h4 class="text-[10px] font-black uppercase tracking-widest text-white">${name}</h4>
                         <p class="text-[8px] font-bold text-zinc-500 uppercase mt-1">${styleTag}</p>
                     </div>
-                    <span class="text-[8px] font-black bg-white/5 border border-white/10 px-2 py-1 rounded text-zinc-400">PNG</span>
                 </div>
             `;
             grid.prepend(card);
@@ -253,13 +221,10 @@
         }
 
         function downloadAsset(url, name) {
-            const safeName = name.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `asset_${safeName}.png`;
-            document.body.appendChild(link);
+            link.download = `asset_${name.replace(/\s+/g, '_')}.png`;
             link.click();
-            document.body.removeChild(link);
         }
     </script>
 </body>
